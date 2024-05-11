@@ -4,7 +4,7 @@
 
 # Description
 
-This component stores bindings attached to the PlayableDirector Component as relative path strings.
+TimelineBindingResolver(TBR) component stores bindings attached to the PlayableDirector Component as relative path strings.
 Using this component, it becomes possible to store reference information from Timeline prefabs to external assets within a prefab,
 thereby reducing asset conflicts during team production with tools like Git and preventing binding confliction.
 
@@ -19,7 +19,7 @@ add `net.tanitta.timeline_binding_resolver": "https://github.com/tanitta/Timelin
 ## Setup
 
 1. Prepare an instance of the prefab that contains a GameObject to which the PlayableDirector Component is attached.
-1. Attach the TimelineBindingResolver Component to the GameObject and save the changes to the prefab.
+1. Attach the TBR Component to the GameObject and save the changes to the prefab.
 
 ## Save and load
 
