@@ -287,10 +287,6 @@ namespace trit
                 if (o is null) continue;
                 var path = GetHierarchyPath(o);
                 var relPath = GetRelativePath(crtPath, path);
-                // Debug.Log("from: " + crtPath);
-                // Debug.Log("to:   " + path);
-                // Debug.Log("rel:  " + relPath);
-                // Debug.Log("abs:  " + ConvertRelativePathToAbsolute(relPath, crtPath));
                 if(binding.outputTargetType is null){
                     Debug.LogError("[TBR]Binding outputTargetType is null." + binding.ToString(), gameObject);
                     Debug.Log("from: " + crtPath);
@@ -353,16 +349,6 @@ namespace trit
             }
             return dict;
         }
-
-        // string GetHierarchyPath(Transform current) {
-        //     string path = current.name;
-        //     while (current.parent != null)
-        //     {
-        //         current = current.parent;
-        //         path = current.name + "/" + path;
-        //     }
-        //     return path;
-        // }
 
         string GetHierarchyPathWithSibling(Transform current)
         {
