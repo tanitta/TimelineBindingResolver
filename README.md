@@ -18,7 +18,7 @@ add `net.tanitta.timeline_binding_resolver": "https://github.com/tanitta/Timelin
 
 ## Setup
 
-1. Prepare an instance of the prefab that contains a GameObject to which the PlayableDirector Component is attached.
+1. Prepare an instance of the prefab that contains a GameObject to which the PlayableDirector Component is attached on the scene.
 1. Attach the TBR Component to the GameObject and save the changes to the prefab.
 
 ## Save and load
