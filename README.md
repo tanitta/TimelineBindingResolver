@@ -4,7 +4,7 @@
 
 # Description
 
-TimelineBindingResolver(TBR) component stores bindings attached to the PlayableDirector Component as relative path strings.
+TimelineBindingResolver(TBR) component is designed for use in VRChat production and stores references for bindings attached to the PlayableDirector Component as relative path strings.
 Using this component, it becomes possible to store reference information from Timeline prefabs to external assets within a prefab,
 thereby reducing asset conflicts during team production with tools like Git and preventing binding confliction.
 
