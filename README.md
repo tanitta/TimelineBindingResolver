@@ -6,7 +6,7 @@
 
 This component stores bindings attached to the PlayableDirector Component as relative path strings.
 Using this component, it becomes possible to store reference information from Timeline prefabs to external assets within a prefab,
-thereby reducing asset conflicts during team production with tools like Git and preventing binding corruption.
+thereby reducing asset conflicts during team production with tools like Git and preventing binding confliction.
 
 # Install
 
