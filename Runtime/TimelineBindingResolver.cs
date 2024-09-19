@@ -1,4 +1,5 @@
 ﻿#if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -51,6 +52,7 @@ namespace trit
             }
             CollectTrackBindings(crtPath);
             CollectClipBindings(crtPath);
+            DisableTimelinePreview();
         }
 
         [ContextMenu("TBR/Check")]
@@ -549,6 +551,68 @@ namespace trit
             // return sameNames.FindIndex(t => t.GetHashCode() == hash);
         }
 
+        void DisableTimelinePreview() {
+            Type timelineWindowType = null;
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+            foreach (var assembly in assemblies) {
+                Type type = assembly.GetType("UnityEditor.Timeline.TimelineWindow");
+                if (type != null) {
+                    timelineWindowType = type;
+                    // Debug.Log("Get TimelineWindow Type.");
+                    break;
+                }
+            }
+
+            if (timelineWindowType == null) {
+                Debug.LogError("Cannot get type of TimelineWindow.");
+                return;
+            }
+
+            UnityEngine.Object[] windows = Resources.FindObjectsOfTypeAll(timelineWindowType);
+            if (windows == null || windows.Length == 0)return;
+
+            EditorWindow timelineWindow = windows[0] as EditorWindow;
+            if (timelineWindow == null) {
+                Debug.LogError("Timeline window is not active.");
+                return;
+            }
+
+            PropertyInfo stateProperty = timelineWindowType.GetProperty("state", BindingFlags.Instance | BindingFlags.Public);
+            if (stateProperty == null) {
+                Debug.LogError("Cannot found 'state' property.");
+                return;
+            }
+
+            object stateInstance = stateProperty.GetValue(timelineWindow);
+            if (stateInstance == null) {
+                Debug.LogError("Cannot get value of 'state' property.");
+                return;
+            }
+
+            PropertyInfo previewModeProperty = stateInstance.GetType().GetProperty("previewMode", BindingFlags.Instance | BindingFlags.Public);
+            if (previewModeProperty == null) {
+                Debug.LogError("Not found 'previewMode' property.");
+                return;
+            }
+
+            previewModeProperty.SetValue(stateInstance, false);
+        }
+    }
+
+    [CustomEditor(typeof(TimelineBindingResolver))]
+    class TimelineBindingResolverEditor: Editor{
+        public override void OnInspectorGUI(){
+            var tbr = (TimelineBindingResolver)target;
+            if(GUILayout.Button("Collect Bindings",GUILayout.Width(120))){
+                Undo.RecordObject(tbr, "Collect Changes");
+                tbr.Collect();
+                EditorUtility.SetDirty(tbr);
+                // serializedObject.Update();
+            };
+            GUILayout.Space(10);
+            DrawDefaultInspector();
+        }
     }
 
     [System.Serializable]
