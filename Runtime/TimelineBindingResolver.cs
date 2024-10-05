@@ -551,53 +551,70 @@ namespace trit
             // return sameNames.FindIndex(t => t.GetHashCode() == hash);
         }
 
-        void DisableTimelinePreview() {
-            Type timelineWindowType = null;
+        Type FindTypeFromAssemblies(string typeName){
+            Type windowType = null;
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-
             foreach (var assembly in assemblies) {
-                Type type = assembly.GetType("UnityEditor.Timeline.TimelineWindow");
+                Type type = assembly.GetType(typeName);
                 if (type != null) {
-                    timelineWindowType = type;
-                    // Debug.Log("Get TimelineWindow Type.");
+                    windowType = type;
                     break;
                 }
             }
+            if (windowType == null) {
+                Debug.LogError(string.Format("Cannot get type of {0}.", typeName));
+                return null;
+            }
+            return windowType;
+        }
 
-            if (timelineWindowType == null) {
-                Debug.LogError("Cannot get type of TimelineWindow.");
-                return;
+        EditorWindow FindWindowFromType(Type windowType, uint index = 0){
+            UnityEngine.Object[] windows = Resources.FindObjectsOfTypeAll(windowType);
+            if (windows == null || windows.Length == 0)return null;
+
+            EditorWindow timelineWindow = windows[index] as EditorWindow;
+            return timelineWindow;
+        }
+
+        EditorWindow FindWindowFromType(string typeName, uint index = 0){
+            var windowType = FindTypeFromAssemblies(typeName);
+            return FindWindowFromType(windowType, index);
+        }
+
+        object GetProperty(object instance, string propertyName, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public){
+            PropertyInfo property = instance.GetType().GetProperty(propertyName, flags);
+            if (property == null) {
+                Debug.LogError(string.Format("Cannot found '{0}' property.", propertyName));
+                return null;
             }
 
-            UnityEngine.Object[] windows = Resources.FindObjectsOfTypeAll(timelineWindowType);
-            if (windows == null || windows.Length == 0)return;
+            object propertyInstance = property.GetValue(instance);
+            if (propertyInstance == null) {
+                Debug.LogError(string.Format("Cannot get value of '{0}' property.", propertyName));
+                return null;
+            }
+            return propertyInstance;
+        }
 
-            EditorWindow timelineWindow = windows[0] as EditorWindow;
+        void SetProperty(object instance, string propertyName, object value, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public){
+            PropertyInfo property = instance.GetType().GetProperty(propertyName, flags);
+            if (property == null) {
+                Debug.LogError(string.Format("Not found '{0}' property.", propertyName));
+                return;
+            }
+            property.SetValue(instance, value);
+        }
+
+        void DisableTimelinePreview() {
+            EditorWindow timelineWindow = FindWindowFromType("UnityEditor.Timeline.TimelineWindow");
             if (timelineWindow == null) {
                 Debug.LogError("Timeline window is not active.");
                 return;
             }
-
-            PropertyInfo stateProperty = timelineWindowType.GetProperty("state", BindingFlags.Instance | BindingFlags.Public);
-            if (stateProperty == null) {
-                Debug.LogError("Cannot found 'state' property.");
-                return;
-            }
-
-            object stateInstance = stateProperty.GetValue(timelineWindow);
-            if (stateInstance == null) {
-                Debug.LogError("Cannot get value of 'state' property.");
-                return;
-            }
-
-            PropertyInfo previewModeProperty = stateInstance.GetType().GetProperty("previewMode", BindingFlags.Instance | BindingFlags.Public);
-            if (previewModeProperty == null) {
-                Debug.LogError("Not found 'previewMode' property.");
-                return;
-            }
-
-            previewModeProperty.SetValue(stateInstance, false);
+            var stateInstance = GetProperty(timelineWindow, "state");
+            SetProperty(stateInstance, "previewMode", false);
         }
+
     }
 
     [CustomEditor(typeof(TimelineBindingResolver))]
