@@ -77,22 +77,17 @@ namespace trit
             foreach (var binding in _director.playableAsset.outputs)
             {
                 var trackAsset = binding.sourceObject as TrackAsset;
+
                 foreach (TimelineClip clip in trackAsset.GetClips())
                 {
-                    foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-                    {
-                        var field = fieldInfo.FieldType.GetField("exposedName");
-                        if (field == null) continue;
-                        var clipAssetInstance = fieldInfo.GetValue(clip.asset);
-                        PropertyName exposeName = (PropertyName)field.GetValue(clipAssetInstance);
-
+                    foreach (var exposedName in PropertyNamesFrom(clip)){
                         bool isValid;
-                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposeName, out isValid);
+                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedName, out isValid);
                         if (exposedValue == null || !isValid)
                         {
-                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposeName, gameObject);
+                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
                         }else{
-                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposeName, gameObject);
+                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
                         }
                     }
                 }
@@ -256,13 +251,19 @@ namespace trit
             _sceneClipBindings = SceneClipBindingsDictToArray(dict);
         }
 
+        IEnumerable<PropertyName> PropertyNamesFrom(TimelineClip clip){
+            foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            {
+                if(fieldInfo.FieldType.GetField("exposedName") == null) continue;
+                PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                yield return exposeName;
+            }
+        }
+
         IEnumerable<PropertyName> PropertyNamesFrom(IEnumerable<TimelineClip> clips){
             foreach (var clip in clips)
             {
-                foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-                {
-                    if(fieldInfo.FieldType.GetField("exposedName") == null) continue;
-                    PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                foreach (var exposeName in PropertyNamesFrom(clip)){
                     yield return exposeName;
                 }
             }
