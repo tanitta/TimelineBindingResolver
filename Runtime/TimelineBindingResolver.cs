@@ -81,8 +81,11 @@ namespace trit
                 {
                     foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
                     {
-                        if (fieldInfo.FieldType.GetField("exposedName") == null) continue;
-                        PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                        var field = fieldInfo.FieldType.GetField("exposedName");
+                        if (field == null) continue;
+                        var clipAssetInstance = fieldInfo.GetValue(clip.asset);
+                        PropertyName exposeName = (PropertyName)field.GetValue(clipAssetInstance);
+
                         bool isValid;
                         UnityEngine.Object exposedValue = _director.GetReferenceValue(exposeName, out isValid);
                         if (exposedValue == null || !isValid)
