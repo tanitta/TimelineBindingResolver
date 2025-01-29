@@ -1,7 +1,6 @@
 {
   "name": "net.tanitta.timeline_binding_resolver",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "displayName": "TimelineBindingResolver",
-  "description": "",
   "unity": "2019.4"
 }
