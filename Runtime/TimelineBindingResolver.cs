@@ -1,4 +1,5 @@
 ﻿#if UNITY_EDITOR
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -51,6 +52,7 @@ namespace trit
             }
             CollectTrackBindings(crtPath);
             CollectClipBindings(crtPath);
+            DisableTimelinePreview();
         }
 
         [ContextMenu("TBR/Check")]
@@ -75,19 +77,17 @@ namespace trit
             foreach (var binding in _director.playableAsset.outputs)
             {
                 var trackAsset = binding.sourceObject as TrackAsset;
+
                 foreach (TimelineClip clip in trackAsset.GetClips())
                 {
-                    foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-                    {
-                        if (fieldInfo.FieldType.GetField("exposedName") == null) continue;
-                        PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                    foreach (var exposedName in PropertyNamesFrom(clip)){
                         bool isValid;
-                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposeName, out isValid);
+                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedName, out isValid);
                         if (exposedValue == null || !isValid)
                         {
-                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposeName, gameObject);
+                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
                         }else{
-                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposeName, gameObject);
+                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
                         }
                     }
                 }
@@ -251,13 +251,19 @@ namespace trit
             _sceneClipBindings = SceneClipBindingsDictToArray(dict);
         }
 
+        IEnumerable<PropertyName> PropertyNamesFrom(TimelineClip clip){
+            foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            {
+                if(fieldInfo.FieldType.GetField("exposedName") == null) continue;
+                PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                yield return exposeName;
+            }
+        }
+
         IEnumerable<PropertyName> PropertyNamesFrom(IEnumerable<TimelineClip> clips){
             foreach (var clip in clips)
             {
-                foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-                {
-                    if(fieldInfo.FieldType.GetField("exposedName") == null) continue;
-                    PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                foreach (var exposeName in PropertyNamesFrom(clip)){
                     yield return exposeName;
                 }
             }
@@ -549,6 +555,85 @@ namespace trit
             // return sameNames.FindIndex(t => t.GetHashCode() == hash);
         }
 
+        Type FindTypeFromAssemblies(string typeName){
+            Type windowType = null;
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var assembly in assemblies) {
+                Type type = assembly.GetType(typeName);
+                if (type != null) {
+                    windowType = type;
+                    break;
+                }
+            }
+            if (windowType == null) {
+                Debug.LogError(string.Format("Cannot get type of {0}.", typeName));
+                return null;
+            }
+            return windowType;
+        }
+
+        EditorWindow FindWindowFromType(Type windowType, uint index = 0){
+            UnityEngine.Object[] windows = Resources.FindObjectsOfTypeAll(windowType);
+            if (windows == null || windows.Length == 0)return null;
+
+            EditorWindow timelineWindow = windows[index] as EditorWindow;
+            return timelineWindow;
+        }
+
+        EditorWindow FindWindowFromType(string typeName, uint index = 0){
+            var windowType = FindTypeFromAssemblies(typeName);
+            return FindWindowFromType(windowType, index);
+        }
+
+        object GetProperty(object instance, string propertyName, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public){
+            PropertyInfo property = instance.GetType().GetProperty(propertyName, flags);
+            if (property == null) {
+                Debug.LogError(string.Format("Cannot found '{0}' property.", propertyName));
+                return null;
+            }
+
+            object propertyInstance = property.GetValue(instance);
+            if (propertyInstance == null) {
+                Debug.LogError(string.Format("Cannot get value of '{0}' property.", propertyName));
+                return null;
+            }
+            return propertyInstance;
+        }
+
+        void SetProperty(object instance, string propertyName, object value, BindingFlags flags = BindingFlags.Instance | BindingFlags.Public){
+            PropertyInfo property = instance.GetType().GetProperty(propertyName, flags);
+            if (property == null) {
+                Debug.LogError(string.Format("Not found '{0}' property.", propertyName));
+                return;
+            }
+            property.SetValue(instance, value);
+        }
+
+        void DisableTimelinePreview() {
+            EditorWindow timelineWindow = FindWindowFromType("UnityEditor.Timeline.TimelineWindow");
+            if (timelineWindow == null) {
+                Debug.LogError("Timeline window is not active.");
+                return;
+            }
+            var stateInstance = GetProperty(timelineWindow, "state");
+            SetProperty(stateInstance, "previewMode", false);
+        }
+
+    }
+
+    [CustomEditor(typeof(TimelineBindingResolver))]
+    class TimelineBindingResolverEditor: Editor{
+        public override void OnInspectorGUI(){
+            var tbr = (TimelineBindingResolver)target;
+            if(GUILayout.Button("Collect Bindings",GUILayout.Width(120))){
+                Undo.RecordObject(tbr, "Collect Changes");
+                tbr.Collect();
+                EditorUtility.SetDirty(tbr);
+                // serializedObject.Update();
+            };
+            GUILayout.Space(10);
+            DrawDefaultInspector();
+        }
     }
 
     [System.Serializable]
