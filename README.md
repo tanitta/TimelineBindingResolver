@@ -16,6 +16,8 @@ add `net.tanitta.timeline_binding_resolver": "https://github.com/tanitta/Timelin
 
 # Usage
 
+[たのしいTimelineBindingResolver](https://docs.google.com/presentation/d/1rwumj8PdmgnMJR3cre19Rt9v9EKIHbzVOKTU_91OMl4/edit)
+
 ## Setup
 
 1. Prepare an instance of the prefab that contains a GameObject to which the PlayableDirector Component is attached on the scene.
