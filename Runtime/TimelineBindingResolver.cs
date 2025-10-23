@@ -10,6 +10,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 
 using UnityEngine.Timeline;
+using System.Text.RegularExpressions;
 
 namespace trit.timelinebindingresolver
 {
@@ -29,6 +30,12 @@ namespace trit.timelinebindingresolver
         public bool _useNameToTrackComparing = false;
         [SerializeField]
         public bool _useNameToClipComparing = false;
+        [SerializeField]
+        public bool _considerClipName = true;
+        [SerializeField]
+        public bool _considerClipTime = false;
+        [SerializeField]
+        public bool _considerTrackName = true;
 
         [SerializeField]
         public List<SceneTrackBinding> _sceneTrackBindings = new List<SceneTrackBinding>();
@@ -92,14 +99,14 @@ namespace trit.timelinebindingresolver
 
                 foreach (TimelineClip clip in trackAsset.GetClips())
                 {
-                    foreach (var exposedName in PropertyNamesFrom(clip)){
+                    foreach (var exposedParm in PropertyNamesFrom(clip)){
                         bool isValid;
-                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedName, out isValid);
+                        UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedParm.exposedName, out isValid);
                         if (exposedValue == null || !isValid)
                         {
-                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
+                            Debug.LogError("[TBR] Detect none clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedParm.exposedName, gameObject);
                         }else{
-                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedName, gameObject);
+                            Debug.Log("[TBR] Detect valid clip field. Track: " + trackAsset.name + " / Clip: " + clip.displayName + " / ExposedReference: " + exposedParm.exposedName, gameObject);
                         }
                     }
                 }
@@ -185,19 +192,31 @@ namespace trit.timelinebindingresolver
             if(_useNameToClipComparing){
                 // Override queryClip if needed
                 // Warning: Very naive implementation
-                var exposedNames = new List<PropertyName>();
+                var exposedParms = new List<ExposedParm>();
                 foreach (var binding in director.playableAsset.outputs)
                 {
                     var trackAsset = binding.sourceObject as TrackAsset;
 
                     foreach (TimelineClip c in trackAsset.GetClips())
                     {
-                        foreach (var exposedName in PropertyNamesFrom(c)){
-                            exposedNames.Add(exposedName);
+                        foreach (var exposedParm in PropertyNamesFrom(c)){
+                            exposedParms.Add(exposedParm);
                         }
                     }
                 }
-                queryPropertyName = exposedNames.Where(n => n.ToString() == clip.clipName).First();
+                var matchings = exposedParms.Where(n => CompareClipName(n.name, clip.clipName));
+                if(!matchings.Any()){
+                    Debug.LogWarning("[TBR]No matching clip name: " + clip.clipName);
+                    isValid = false;
+                    return null;
+                }
+                // Check duplication
+                if(1<matchings.Count()){
+                    Debug.LogWarning("[TBR]Detected duplicate clips: " + clip.clipName + "\n"+"Please ensure all clips have unique identifiers.");
+                    isValid = false;
+                    return null;
+                }
+                queryPropertyName = matchings.First().exposedName;
             }
             return director.GetReferenceValue(queryPropertyName, out isValid);
         }
@@ -207,21 +226,77 @@ namespace trit.timelinebindingresolver
             if(_useNameToClipComparing){
                 // Override queryClip if needed
                 // Warning: Very naive implementation
-                var exposedNames = new List<PropertyName>();
+                var exposedParms = new List<ExposedParm>();
                 foreach (var binding in director.playableAsset.outputs)
                 {
                     var trackAsset = binding.sourceObject as TrackAsset;
 
                     foreach (TimelineClip c in trackAsset.GetClips())
                     {
-                        foreach (var exposedName in PropertyNamesFrom(c)){
-                            exposedNames.Add(exposedName);
+                        foreach (var exposedParm in PropertyNamesFrom(c)){
+                            exposedParms.Add(exposedParm);
                         }
                     }
                 }
-                queryPropertyName = exposedNames.Where(n => n.ToString() == clip.clipName).First();
+                var matchings = exposedParms.Where(n => CompareClipName(n.name, clip.clipName));
+                if(!matchings.Any()){
+                    Debug.LogWarning("[TBR]No matching clip name: " + clip.clipName);
+                    return;
+                }
+                // Check duplication
+                if(1<matchings.Count()){
+                    Debug.LogWarning("[TBR]Detected duplicate clips: " + clip.clipName + "\n"+"Please ensure all clips have unique identifiers.");
+                    return;
+                }
+                queryPropertyName = matchings.First().exposedName;
             }
-            director.SetReferenceValue (clip.clip, value);
+            director.SetReferenceValue (queryPropertyName, value);
+        }
+
+        bool CompareClipName(string lhs, string rhs){
+            return RebuildClipString(lhs, _considerClipName, _considerClipTime, _considerTrackName) == RebuildClipString(rhs, _considerClipName, _considerClipTime, _considerTrackName);
+        }
+
+        static string RebuildClipString(string input, bool useClipName, bool useClipTime, bool useTrackName)
+        {
+            var regex = new Regex(@"^(.*?)\s*\(([\d\.]+),\s*([\d\.]+)\):([\d\.]+)\s*\|\s*(.*)$");
+            var match = regex.Match(input);
+
+            if (!match.Success)
+            {
+                Debug.LogWarning("Not match pattern.");
+                return input;
+            }
+
+            string clipName = match.Groups[1].Value.Trim();
+            string start = match.Groups[2].Value;
+            string end = match.Groups[3].Value;
+            string offset = match.Groups[4].Value;
+            string trackName = match.Groups[5].Value.Trim();
+
+            string result = "";
+            bool hasPrev = false;
+
+            if (useClipName)
+            {
+                result += clipName;
+                hasPrev = true;
+            }
+
+            if (useClipTime)
+            {
+                if (hasPrev) result += " ";
+                result += $"({start}, {end}):{offset}";
+                hasPrev = true;
+            }
+
+            if (useTrackName)
+            {
+                if (hasPrev) result += " | ";
+                result += trackName;
+            }
+
+            return result;
         }
 
         void ApplyTrackBinding(string crtPath) {
@@ -264,18 +339,21 @@ namespace trit.timelinebindingresolver
         void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding track, Object value){
             var targetTrackBinding = track.track as Object;
             if(_useNameToTrackComparing){
-                var playableBindings = _director.playableAsset.outputs.Where(b => b.streamName == track.trackName);
-                foreach (var e in _director.playableAsset.outputs){
-                    Debug.Log(e.streamName);
-                }
-                if(!playableBindings.Any()){
+                var matchings = _director.playableAsset.outputs.Where(b => b.streamName == track.trackName);
+                if(!matchings.Any()){
                     Debug.LogWarning("[TBR]No matching track name: " + track.trackName);
                     return;
                 }
-                targetTrackBinding = playableBindings.First().sourceObject;
+
+                // Check duplication
+                if(1<matchings.Count()){
+                    Debug.LogWarning("[TBR]Detected duplicate tracks: " + track.trackName + "\n"+"Please ensure all clips have unique identifiers.");
+                    return;
+                }
+
+                targetTrackBinding = matchings.First().sourceObject;
             }
             director.SetGenericBinding(targetTrackBinding, value);
-            Debug.Log("Set Binding: " + targetTrackBinding.ToString(), value);
         }
 
         void ApplyClipBindings(string crtPath) {
@@ -325,34 +403,42 @@ namespace trit.timelinebindingresolver
             _director = GetComponent<PlayableDirector>();
             var clips = TimelineClips(_director.playableAsset as TimelineAsset);
             var dict = SceneClipBindingsToDict(_sceneClipBindings);
-            foreach(var exposeName in PropertyNamesFrom(clips)){
+            foreach(var exposedParm in PropertyNamesFrom(clips)){
                 bool isValid;
-                UnityEngine.Object exposedValue = _director.GetReferenceValue(exposeName, out isValid);
+                UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedParm.exposedName, out isValid);
                 if (exposedValue == null || !isValid)continue;
                 var path = SceneUtils.GetHierarchyPath(exposedValue);
                 var relPath = SceneUtils.GetRelativePath(crtPath, path);
                 var type = exposedValue.GetType();
                 var assemblyName = System.Reflection.Assembly.GetAssembly(type).GetName().Name;
-                dict[exposeName] = (exposeName.ToString(), relPath.ToString(), type.FullName, assemblyName);
+                dict[exposedParm.exposedName] = (exposedParm.name, relPath.ToString(), type.FullName, assemblyName);
             }
             _sceneClipBindings = SceneClipBindingsDictToArray(dict);
         }
 
-        static IEnumerable<PropertyName> PropertyNamesFrom(TimelineClip clip){
+        struct ExposedParm{
+            public PropertyName exposedName;
+            public string name;
+        }
+
+        static IEnumerable<ExposedParm> PropertyNamesFrom(TimelineClip clip){
             var query = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
             foreach (FieldInfo fieldInfo in clip.asset.GetType().GetFields(query))
             {
                 if(fieldInfo.FieldType.GetField("exposedName") == null) continue;
-                PropertyName exposeName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
-                yield return exposeName;
+                PropertyName exposedName = (PropertyName)fieldInfo.FieldType.GetField("exposedName").GetValue(fieldInfo.GetValue(clip.asset));
+                var result = new ExposedParm();
+                result.name = clip.ToString() + "." + fieldInfo.Name;
+                result.exposedName = exposedName;
+                yield return result;
             }
         }
 
-        static IEnumerable<PropertyName> PropertyNamesFrom(IEnumerable<TimelineClip> clips){
+        static IEnumerable<ExposedParm> PropertyNamesFrom(IEnumerable<TimelineClip> clips){
             foreach (var clip in clips)
             {
-                foreach (var exposeName in PropertyNamesFrom(clip)){
-                    yield return exposeName;
+                foreach (var exposedParm in PropertyNamesFrom(clip)){
+                    yield return exposedParm;
                 }
             }
         }
