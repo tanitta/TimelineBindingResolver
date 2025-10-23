@@ -13,8 +13,8 @@ using UnityEngine.Timeline;
 
 namespace trit.timelinebindingresolver
 {
-    using SceneTrackBindingDictionary = System.Collections.Generic.Dictionary<UnityEngine.Object, (string gameObjectPath, string componentTypeName, string assemblyName)>;
-    using SceneClipBindingDictionary = System.Collections.Generic.Dictionary<UnityEngine.PropertyName, (string gameObjectPath, string componentTypeName, string assemblyName)>;
+    using SceneTrackBindingDictionary = System.Collections.Generic.Dictionary<UnityEngine.Object, (string name, string gameObjectPath, string componentTypeName, string assemblyName)>;
+    using SceneClipBindingDictionary = System.Collections.Generic.Dictionary<UnityEngine.PropertyName, (string name, string gameObjectPath, string componentTypeName, string assemblyName)>;
 
     [ExecuteInEditMode]
     [RequireComponent(typeof(PlayableDirector))]
@@ -24,6 +24,11 @@ namespace trit.timelinebindingresolver
         [SerializeField]
         Transform _proxyTransform;
         Dictionary<PlayableOutput, string> _trackToRelPath;
+
+        [SerializeField]
+        public bool _useNameToTrackComparing = false;
+        [SerializeField]
+        public bool _useNameToClipComparing = false;
 
         [SerializeField]
         public List<SceneTrackBinding> _sceneTrackBindings = new List<SceneTrackBinding>();
@@ -107,9 +112,11 @@ namespace trit.timelinebindingresolver
             if (_proxyTransform != null) {
                 crtPath = SceneUtils.GetHierarchyPath(_proxyTransform);
             }
+
+            // Check tracks
             var needlessTrackBindings = new List<SceneTrackBinding>();
             foreach (var binding in _sceneTrackBindings){
-                if (binding.track == null){
+                if (Empty(binding)){
                     needlessTrackBindings.Add(binding);
                     continue;
                 }
@@ -140,10 +147,11 @@ namespace trit.timelinebindingresolver
             }
             _sceneTrackBindings = _sceneTrackBindings.Where(b => needlessTrackBindings.FindIndex(n => n.Equals(b)) < 0).ToList();
 
+            // Check clips
             var needlessClipBindings = new List<SceneClipBinding>();
             foreach (var binding in _sceneClipBindings){
                 bool isValid;
-                if (_director.GetReferenceValue(binding.clip, out isValid) != null) continue;
+                if (GetReferenceValueFromClip(_director, binding, out isValid) != null) continue;
                 var absPath = SceneUtils.ConvertRelativePathToAbsolute(binding.gameObjectPath, crtPath);
                 var go = SceneUtils.FindGameObjectFromPath(absPath);
                 if(go == null){
@@ -172,15 +180,58 @@ namespace trit.timelinebindingresolver
             _sceneClipBindings = _sceneClipBindings.Where(b => needlessClipBindings.FindIndex(n => n.Equals(b)) < 0).ToList();
         }
 
+        Object GetReferenceValueFromClip(PlayableDirector director, SceneClipBinding clip, out bool isValid){
+            var queryPropertyName = clip.clip;
+            if(_useNameToClipComparing){
+                // Override queryClip if needed
+                // Warning: Very naive implementation
+                var exposedNames = new List<PropertyName>();
+                foreach (var binding in director.playableAsset.outputs)
+                {
+                    var trackAsset = binding.sourceObject as TrackAsset;
+
+                    foreach (TimelineClip c in trackAsset.GetClips())
+                    {
+                        foreach (var exposedName in PropertyNamesFrom(c)){
+                            exposedNames.Add(exposedName);
+                        }
+                    }
+                }
+                queryPropertyName = exposedNames.Where(n => n.ToString() == clip.clipName).First();
+            }
+            return director.GetReferenceValue(queryPropertyName, out isValid);
+        }
+
+        void SetReferenceValueFromClip(PlayableDirector director, SceneClipBinding clip, Object value){
+            var queryPropertyName = clip.clip;
+            if(_useNameToClipComparing){
+                // Override queryClip if needed
+                // Warning: Very naive implementation
+                var exposedNames = new List<PropertyName>();
+                foreach (var binding in director.playableAsset.outputs)
+                {
+                    var trackAsset = binding.sourceObject as TrackAsset;
+
+                    foreach (TimelineClip c in trackAsset.GetClips())
+                    {
+                        foreach (var exposedName in PropertyNamesFrom(c)){
+                            exposedNames.Add(exposedName);
+                        }
+                    }
+                }
+                queryPropertyName = exposedNames.Where(n => n.ToString() == clip.clipName).First();
+            }
+            director.SetReferenceValue (clip.clip, value);
+        }
+
         void ApplyTrackBinding(string crtPath) {
             _director = GetComponent<PlayableDirector>();
             foreach (var binding in _sceneTrackBindings)
             {
-                if (binding.track == null){
+                if (Empty(binding)){
                     Debug.Log("[TBR] Detect needless track binding. Reset and re-collect resolver track list in " + gameObject.name, gameObject);
                     continue;
                 }
-                // if (_director.GetGenericBinding(binding.track) != null) continue;
                 var absPath = SceneUtils.ConvertRelativePathToAbsolute(binding.gameObjectPath, crtPath);
                 var go = SceneUtils.FindGameObjectFromPath(absPath);
                 if(go == null){
@@ -189,7 +240,7 @@ namespace trit.timelinebindingresolver
                 }
                 System.Type componentType = System.Reflection.Assembly.Load("UnityEngine.dll").GetType(binding.componentTypeName);
                 if (componentType == typeof(GameObject)) {
-                    _director.SetGenericBinding(binding.track, go);
+                    SetGenericBindingFromTrack(_director, binding, go);
                 } else {
                     UnityEngine.Component component;
                     if (componentType == null) {
@@ -205,9 +256,26 @@ namespace trit.timelinebindingresolver
                             continue;
                         }
                     }
-                    _director.SetGenericBinding(binding.track, component);
+                    SetGenericBindingFromTrack(_director, binding, component);
                 }
             }
+        }
+
+        void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding track, Object value){
+            var targetTrackBinding = track.track as Object;
+            if(_useNameToTrackComparing){
+                var playableBindings = _director.playableAsset.outputs.Where(b => b.streamName == track.trackName);
+                foreach (var e in _director.playableAsset.outputs){
+                    Debug.Log(e.streamName);
+                }
+                if(!playableBindings.Any()){
+                    Debug.LogWarning("[TBR]No matching track name: " + track.trackName);
+                    return;
+                }
+                targetTrackBinding = playableBindings.First().sourceObject;
+            }
+            director.SetGenericBinding(targetTrackBinding, value);
+            Debug.Log("Set Binding: " + targetTrackBinding.ToString(), value);
         }
 
         void ApplyClipBindings(string crtPath) {
@@ -223,7 +291,7 @@ namespace trit.timelinebindingresolver
                 }
                 System.Type componentType = System.Reflection.Assembly.Load("UnityEngine.dll").GetType(binding.componentTypeName);
                 if (componentType == typeof(GameObject)){
-                    _director.SetReferenceValue (binding.clip, go);
+                    SetReferenceValueFromClip(_director, binding, go);
                 }else{
                     UnityEngine.Component component;
                     if (componentType == null) {
@@ -231,11 +299,26 @@ namespace trit.timelinebindingresolver
                     } else {
                         component = go.GetComponent(componentType);
                     }
-                    _director.SetReferenceValue (binding.clip, component);
+                    SetReferenceValueFromClip(_director, binding, component);
                 }
             }
         }
 
+        bool Empty(in SceneTrackBinding track){
+            if(_useNameToTrackComparing){
+                return !track.trackName.Any();
+            }else{
+                return track.track == null;
+            }
+        }
+
+        bool Empty(in SceneClipBinding clip){
+            if(_useNameToTrackComparing){
+                return !clip.clipName.Any();
+            }else{
+                return clip.clip == null;
+            }
+        }
 
         void CollectClipBindings(string crtPath)
         {
@@ -250,7 +333,7 @@ namespace trit.timelinebindingresolver
                 var relPath = SceneUtils.GetRelativePath(crtPath, path);
                 var type = exposedValue.GetType();
                 var assemblyName = System.Reflection.Assembly.GetAssembly(type).GetName().Name;
-                dict[exposeName] = (relPath.ToString(), type.FullName, assemblyName);
+                dict[exposeName] = (exposeName.ToString(), relPath.ToString(), type.FullName, assemblyName);
             }
             _sceneClipBindings = SceneClipBindingsDictToArray(dict);
         }
@@ -307,7 +390,7 @@ namespace trit.timelinebindingresolver
                 }
                 var assembly = System.Reflection.Assembly.GetAssembly(binding.outputTargetType);
                 var assemblyName = assembly.GetName().Name;
-                dict[track] = (relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
+                dict[track] = (track.name, relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
             }
             _sceneTrackBindings = SceneTrackBindingsDictToArray(dict);
 
@@ -320,6 +403,7 @@ namespace trit.timelinebindingresolver
             {
                 var sceneBinding = new SceneTrackBinding();
                 sceneBinding.track = elem.Key;
+                sceneBinding.trackName = elem.Value.name;
                 sceneBinding.gameObjectPath = elem.Value.gameObjectPath;
                 sceneBinding.componentTypeName = elem.Value.componentTypeName;
                 sceneBinding.assemblyName = elem.Value.assemblyName;
@@ -335,6 +419,7 @@ namespace trit.timelinebindingresolver
             {
                 var sceneClipBinding = new SceneClipBinding();
                 sceneClipBinding.clip = elem.Key;
+                sceneClipBinding.clipName = elem.Value.name;
                 sceneClipBinding.gameObjectPath = elem.Value.gameObjectPath;
                 sceneClipBinding.componentTypeName = elem.Value.componentTypeName;
                 sceneClipBinding.assemblyName = elem.Value.assemblyName;
@@ -344,19 +429,29 @@ namespace trit.timelinebindingresolver
         }
         static SceneTrackBindingDictionary SceneTrackBindingsToDict(in List<SceneTrackBinding> bindings)
         {
-            var dict = new Dictionary<UnityEngine.Object, (string gameObjectPath, string componentTypeName, string assemblyName)>();
+            var dict = new SceneTrackBindingDictionary();
             foreach (var binding in bindings)
             {
-                dict[binding.track] = (binding.gameObjectPath, binding.componentTypeName, binding.assemblyName);
+                dict[binding.track] = (
+                    binding.trackName,
+                    binding.gameObjectPath,
+                    binding.componentTypeName,
+                    binding.assemblyName
+                );
             }
             return dict;
         }
         static SceneClipBindingDictionary SceneClipBindingsToDict(in List<SceneClipBinding> bindings)
         {
-            var dict = new Dictionary<PropertyName, (string gameObjectPath, string componentTypeName, string assemblyName)>();
+            var dict = new SceneClipBindingDictionary();
             foreach (var binding in bindings)
             {
-                dict[binding.clip] = (binding.gameObjectPath, binding.componentTypeName, binding.assemblyName);
+                dict[binding.clip] = (
+                    binding.clipName,
+                    binding.gameObjectPath,
+                    binding.componentTypeName,
+                    binding.assemblyName
+                );
             }
             return dict;
         }
@@ -366,6 +461,7 @@ namespace trit.timelinebindingresolver
     public struct SceneTrackBinding
     {
         public UnityEngine.Object track;
+        public string trackName;
         public string gameObjectPath;
         public string componentTypeName;
         public string assemblyName;
@@ -375,6 +471,7 @@ namespace trit.timelinebindingresolver
     public struct SceneClipBinding
     {
         public UnityEngine.PropertyName clip;
+        public string clipName;
         public string gameObjectPath;
         public string componentTypeName;
         public string assemblyName;

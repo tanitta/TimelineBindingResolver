@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using UnityEngine;
 using System;
 using System.Reflection;
@@ -61,3 +62,4 @@ namespace trit.timelinebindingresolver{
         }
     }
 }
+#endif
