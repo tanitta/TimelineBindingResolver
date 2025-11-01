@@ -28,8 +28,8 @@ namespace trit.timelinebindingresolver
 
         [SerializeField]
         public bool _useNameToTrackComparing = false;
-        // [SerializeField]
-        // public bool _considerTrackGroupForTrackMatching = false;
+        [SerializeField]
+        public bool _considerTrackGroupForTrackMatching = false;
         [SerializeField]
         public bool _useNameToClipComparing = false;
         [SerializeField]
@@ -385,18 +385,23 @@ namespace trit.timelinebindingresolver
             }
         }
 
-        void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding track, Object value){
-            var targetTrackBinding = track.track as Object;
+        void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding sceneTrackBinding, Object value){
+            var targetTrackBinding = sceneTrackBinding.track as Object;
             if(_useNameToTrackComparing){
-                var matchings = _director.playableAsset.outputs.Where(b => b.streamName == track.trackName);
+                var matchings = new List<PlayableBinding>();
+                if(_considerTrackGroupForTrackMatching){
+                    matchings = _director.playableAsset.outputs.Where(b => GetTrackPath(b.sourceObject as TrackAsset) == sceneTrackBinding.trackName).ToList();
+                }else{
+                    matchings = _director.playableAsset.outputs.Where(b => b.streamName == (sceneTrackBinding.trackName).Split("/").Last()).ToList();
+                }
                 if(!matchings.Any()){
-                    Debug.LogWarning("[TBR]No matching track name: " + track.trackName);
+                    Debug.LogWarning("[TBR]No matching track name: " + sceneTrackBinding.trackName);
                     return;
                 }
 
                 // Check duplication
                 if(1<matchings.Count()){
-                    Debug.LogWarning("[TBR]Detected duplicate tracks: " + track.trackName + "\n"+"Please ensure all clips have unique identifiers.");
+                    Debug.LogWarning("[TBR]Detected duplicate tracks: " + sceneTrackBinding.trackName + "\n"+"Please ensure all clips have unique identifiers.");
                     return;
                 }
 
@@ -519,7 +524,8 @@ namespace trit.timelinebindingresolver
             var dict = SceneTrackBindingsToDict(_sceneTrackBindings);
             foreach (var binding in _director.playableAsset.outputs)
             {
-                var track = binding.sourceObject;
+                var track = binding.sourceObject as TrackAsset;
+                var trackPath = GetTrackPath(track);
                 var o = _director.GetGenericBinding(track);
                 if (o is null) continue;
                 var path = SceneUtils.GetHierarchyPath(o);
@@ -533,7 +539,7 @@ namespace trit.timelinebindingresolver
                 }
                 var assembly = System.Reflection.Assembly.GetAssembly(binding.outputTargetType);
                 var assemblyName = assembly.GetName().Name;
-                dict[track] = (track.name, relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
+                dict[track] = (trackPath, relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
             }
             _sceneTrackBindings = SceneTrackBindingsDictToArray(dict);
 
