@@ -29,6 +29,8 @@ namespace trit.timelinebindingresolver
         [SerializeField]
         public bool _useNameToTrackComparing = false;
         [SerializeField]
+        public bool _considerTrackGroupForTrackMatching = false;
+        [SerializeField]
         public bool _useNameToClipComparing = false;
         [SerializeField]
         public bool _considerClipName = true;
@@ -36,6 +38,8 @@ namespace trit.timelinebindingresolver
         public bool _considerClipTime = false;
         [SerializeField]
         public bool _considerTrackName = true;
+        [SerializeField]
+        public bool _considerTrackGroupForClipMatching = false;
 
         [SerializeField]
         public List<SceneTrackBinding> _sceneTrackBindings = new List<SceneTrackBinding>();
@@ -192,19 +196,24 @@ namespace trit.timelinebindingresolver
             if(_useNameToClipComparing){
                 // Override queryClip if needed
                 // Warning: Very naive implementation
-                var exposedParms = new List<ExposedParm>();
+                var exposedParms = new List<(ExposedParm, string)>();
                 foreach (var binding in director.playableAsset.outputs)
                 {
                     var trackAsset = binding.sourceObject as TrackAsset;
+                    var trackPath = GetTrackPath(trackAsset);
+                    var trackDir = GetTrackDirectory(trackAsset);
 
                     foreach (TimelineClip c in trackAsset.GetClips())
                     {
                         foreach (var exposedParm in PropertyNamesFrom(c)){
-                            exposedParms.Add(exposedParm);
+                            var parsed = ParsedClipName.Decode(exposedParm.name);
+                            parsed.trackPath = trackPath;
+                            var name = ParsedClipName.Encode(parsed, true, true, true, true);
+                            exposedParms.Add((exposedParm, name));
                         }
                     }
                 }
-                var matchings = exposedParms.Where(n => CompareClipName(n.name, clip.clipName));
+                var matchings = exposedParms.Where(p => CompareClipName(p.Item2, clip.clipName));
                 if(!matchings.Any()){
                     Debug.LogWarning("[TBR]No matching clip name: " + clip.clipName);
                     isValid = false;
@@ -216,7 +225,7 @@ namespace trit.timelinebindingresolver
                     isValid = false;
                     return null;
                 }
-                queryPropertyName = matchings.First().exposedName;
+                queryPropertyName = matchings.First().Item1.exposedName;
             }
             return director.GetReferenceValue(queryPropertyName, out isValid);
         }
@@ -226,19 +235,24 @@ namespace trit.timelinebindingresolver
             if(_useNameToClipComparing){
                 // Override queryClip if needed
                 // Warning: Very naive implementation
-                var exposedParms = new List<ExposedParm>();
+                var exposedParms = new List<(ExposedParm, string)>();
                 foreach (var binding in director.playableAsset.outputs)
                 {
                     var trackAsset = binding.sourceObject as TrackAsset;
+                    var trackPath = GetTrackPath(trackAsset);
+                    var trackDir = GetTrackDirectory(trackAsset);
 
                     foreach (TimelineClip c in trackAsset.GetClips())
                     {
                         foreach (var exposedParm in PropertyNamesFrom(c)){
-                            exposedParms.Add(exposedParm);
+                            var parsed = ParsedClipName.Decode(exposedParm.name);
+                            parsed.trackPath = trackPath;
+                            var name = ParsedClipName.Encode(parsed, true, true, true, true);
+                            exposedParms.Add((exposedParm, name));
                         }
                     }
                 }
-                var matchings = exposedParms.Where(n => CompareClipName(n.name, clip.clipName));
+                var matchings = exposedParms.Where(p => CompareClipName(p.Item2, clip.clipName));
                 if(!matchings.Any()){
                     Debug.LogWarning("[TBR]No matching clip name: " + clip.clipName);
                     return;
@@ -248,55 +262,90 @@ namespace trit.timelinebindingresolver
                     Debug.LogWarning("[TBR]Detected duplicate clips: " + clip.clipName + "\n"+"Please ensure all clips have unique identifiers.");
                     return;
                 }
-                queryPropertyName = matchings.First().exposedName;
+                queryPropertyName = matchings.First().Item1.exposedName;
             }
             director.SetReferenceValue (queryPropertyName, value);
         }
 
         bool CompareClipName(string lhs, string rhs){
-            return RebuildClipString(lhs, _considerClipName, _considerClipTime, _considerTrackName) == RebuildClipString(rhs, _considerClipName, _considerClipTime, _considerTrackName);
+            return FilterClipString(lhs, _considerClipName, _considerClipTime, _considerTrackName, _considerTrackGroupForClipMatching) == FilterClipString(rhs, _considerClipName, _considerClipTime, _considerTrackName, _considerTrackGroupForClipMatching);
         }
 
-        static string RebuildClipString(string input, bool useClipName, bool useClipTime, bool useTrackName)
+        static string FilterClipString(string input, bool useClipName, bool useClipTime, bool useTrackName, bool useTrackGroup)
         {
-            var regex = new Regex(@"^(.*?)\s*\(([\d\.]+),\s*([\d\.]+)\):([\d\.]+)\s*\|\s*(.*)$");
-            var match = regex.Match(input);
+            var parsed = ParsedClipName.Decode(input);
+            return ParsedClipName.Encode(parsed, useClipName, useClipTime, useTrackName, useTrackGroup);
+        }
 
-            if (!match.Success)
-            {
-                Debug.LogWarning("Not match pattern.");
-                return input;
+        struct ParsedClipName{
+            public string clipName;
+            public string start;
+            public string end;
+            public string offset;
+            public string trackPath;
+            public string trackName;
+            public string parmName;
+            public static ParsedClipName Decode(string input){
+                var regex = new Regex(@"^(.*?)\s*\(([\d\.]+),\s*([\d\.]+)\):([\d\.]+)\s*\|\s*(.*?)(?:\s+(\([^)]*\)\S*))?$");
+                var match = regex.Match(input);
+
+                if (!match.Success)
+                {
+                    Debug.LogWarning("Not match pattern.");
+                    Debug.Assert(false);
+                }
+
+                string clipName = match.Groups[1].Value.Trim();
+                string start = match.Groups[2].Value;
+                string end = match.Groups[3].Value;
+                string offset = match.Groups[4].Value;
+                string trackPath = match.Groups[5].Value.Trim();
+                string parmName = match.Groups[6].Success ? match.Groups[6].Value.Trim() : string.Empty;
+                string trackName = trackPath.Split('/').Last();
+
+                var parsed = new ParsedClipName();
+                parsed.clipName = clipName;
+                parsed.start = start;
+                parsed.end = end;
+                parsed.offset = offset;
+                parsed.trackPath = trackPath;
+                parsed.trackName = trackName;
+                parsed.parmName = parmName;
+                return parsed;
             }
+            public static string Encode(ParsedClipName parsed, bool useClipName, bool useClipTime, bool useTrackName, bool useTrackGroup){
+                string result = "";
+                bool hasPrev = false;
 
-            string clipName = match.Groups[1].Value.Trim();
-            string start = match.Groups[2].Value;
-            string end = match.Groups[3].Value;
-            string offset = match.Groups[4].Value;
-            string trackName = match.Groups[5].Value.Trim();
+                if (useClipName)
+                {
+                    result += parsed.clipName;
+                    hasPrev = true;
+                }
 
-            string result = "";
-            bool hasPrev = false;
+                if (useClipTime)
+                {
+                    if (hasPrev) result += " ";
+                    result += $"({parsed.start}, {parsed.end}):{parsed.offset}";
+                    hasPrev = true;
+                }
 
-            if (useClipName)
-            {
-                result += clipName;
-                hasPrev = true;
+                if (useTrackName)
+                {
+                    if (hasPrev) result += " | ";
+                    string trackSegment = useTrackGroup ? parsed.trackPath : parsed.trackPath.Split('/').Last();
+                    if (!string.IsNullOrEmpty(parsed.parmName))
+                    {
+                        result += $"{trackSegment} {parsed.parmName}";
+                    }
+                    else
+                    {
+                        result += trackSegment;
+                    }
+                }
+
+                return result;
             }
-
-            if (useClipTime)
-            {
-                if (hasPrev) result += " ";
-                result += $"({start}, {end}):{offset}";
-                hasPrev = true;
-            }
-
-            if (useTrackName)
-            {
-                if (hasPrev) result += " | ";
-                result += trackName;
-            }
-
-            return result;
         }
 
         void ApplyTrackBinding(string crtPath) {
@@ -336,18 +385,23 @@ namespace trit.timelinebindingresolver
             }
         }
 
-        void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding track, Object value){
-            var targetTrackBinding = track.track as Object;
+        void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding sceneTrackBinding, Object value){
+            var targetTrackBinding = sceneTrackBinding.track as Object;
             if(_useNameToTrackComparing){
-                var matchings = _director.playableAsset.outputs.Where(b => b.streamName == track.trackName);
+                var matchings = new List<PlayableBinding>();
+                if(_considerTrackGroupForTrackMatching){
+                    matchings = _director.playableAsset.outputs.Where(b => GetTrackPath(b.sourceObject as TrackAsset) == sceneTrackBinding.trackName).ToList();
+                }else{
+                    matchings = _director.playableAsset.outputs.Where(b => b.streamName == (sceneTrackBinding.trackName).Split("/").Last()).ToList();
+                }
                 if(!matchings.Any()){
-                    Debug.LogWarning("[TBR]No matching track name: " + track.trackName);
+                    Debug.LogWarning("[TBR]No matching track name: " + sceneTrackBinding.trackName);
                     return;
                 }
 
                 // Check duplication
                 if(1<matchings.Count()){
-                    Debug.LogWarning("[TBR]Detected duplicate tracks: " + track.trackName + "\n"+"Please ensure all clips have unique identifiers.");
+                    Debug.LogWarning("[TBR]Detected duplicate tracks: " + sceneTrackBinding.trackName + "\n"+"Please ensure all clips have unique identifiers.");
                     return;
                 }
 
@@ -403,15 +457,23 @@ namespace trit.timelinebindingresolver
             _director = GetComponent<PlayableDirector>();
             var clips = TimelineClips(_director.playableAsset as TimelineAsset);
             var dict = SceneClipBindingsToDict(_sceneClipBindings);
-            foreach(var exposedParm in PropertyNamesFrom(clips)){
-                bool isValid;
-                UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedParm.exposedName, out isValid);
-                if (exposedValue == null || !isValid)continue;
-                var path = SceneUtils.GetHierarchyPath(exposedValue);
-                var relPath = SceneUtils.GetRelativePath(crtPath, path);
-                var type = exposedValue.GetType();
-                var assemblyName = System.Reflection.Assembly.GetAssembly(type).GetName().Name;
-                dict[exposedParm.exposedName] = (exposedParm.name, relPath.ToString(), type.FullName, assemblyName);
+            foreach(var clip in clips){
+                var track = clip.GetParentTrack();
+                var trackPath = GetTrackPath(track);
+                var trackDir = GetTrackDirectory(track);
+                foreach(var exposedParm in PropertyNamesFrom(clip)){
+                    bool isValid;
+                    UnityEngine.Object exposedValue = _director.GetReferenceValue(exposedParm.exposedName, out isValid);
+                    if (exposedValue == null || !isValid)continue;
+                    var path = SceneUtils.GetHierarchyPath(exposedValue);
+                    var relPath = SceneUtils.GetRelativePath(crtPath, path);
+                    var type = exposedValue.GetType();
+                    var assemblyName = System.Reflection.Assembly.GetAssembly(type).GetName().Name;
+                    var parsed = ParsedClipName.Decode(exposedParm.name);
+                    parsed.trackPath = trackPath;
+                    var name = ParsedClipName.Encode(parsed, true, true, true, true);
+                    dict[exposedParm.exposedName] = (name, relPath.ToString(), type.FullName, assemblyName);
+                }
             }
             _sceneClipBindings = SceneClipBindingsDictToArray(dict);
         }
@@ -462,7 +524,8 @@ namespace trit.timelinebindingresolver
             var dict = SceneTrackBindingsToDict(_sceneTrackBindings);
             foreach (var binding in _director.playableAsset.outputs)
             {
-                var track = binding.sourceObject;
+                var track = binding.sourceObject as TrackAsset;
+                var trackPath = GetTrackPath(track);
                 var o = _director.GetGenericBinding(track);
                 if (o is null) continue;
                 var path = SceneUtils.GetHierarchyPath(o);
@@ -476,7 +539,7 @@ namespace trit.timelinebindingresolver
                 }
                 var assembly = System.Reflection.Assembly.GetAssembly(binding.outputTargetType);
                 var assemblyName = assembly.GetName().Name;
-                dict[track] = (track.name, relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
+                dict[track] = (trackPath, relPath.ToString(), binding.outputTargetType.FullName, assemblyName);
             }
             _sceneTrackBindings = SceneTrackBindingsDictToArray(dict);
 
@@ -540,6 +603,41 @@ namespace trit.timelinebindingresolver
                 );
             }
             return dict;
+        }
+
+        static string GetTrackPath(TrackAsset track)
+        {
+            var result = new List<string>();
+            AddTrackRecursive(track, result);
+            return string.Join("/", result);
+        }
+
+        static string GetTrackDirectory(string trackPath)
+        {
+            var elements = trackPath.Split('/');
+            if (elements.Length <= 1) return "";
+            return string.Join("/", elements.Take(elements.Length - 1));
+        }
+
+        static string GetTrackDirectory(TrackAsset track)
+        {
+            var result = new List<string>();
+            AddTrackRecursive(track, result);
+            if(result.Count == 0) return "";
+            result.RemoveAt(result.Count - 1);
+            return string.Join("/", result);
+        }
+
+        private static void AddTrackRecursive(TrackAsset track, List<string> result)
+        {
+            if (track == null) return;
+
+            if (track.parent is TrackAsset parentTrack)
+            {
+                AddTrackRecursive(parentTrack, result);
+            }
+
+            result.Add(track.name);
         }
     }
 
