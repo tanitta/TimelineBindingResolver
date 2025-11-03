@@ -26,18 +26,26 @@ namespace trit.timelinebindingresolver
         Transform _proxyTransform;
         Dictionary<PlayableOutput, string> _trackToRelPath;
 
+        // Matching Options
+        [HideInInspector]
         [SerializeField]
         public bool _useNameToTrackComparing = false;
+        [HideInInspector]
         [SerializeField]
         public bool _considerTrackGroupForTrackMatching = false;
+        [HideInInspector]
         [SerializeField]
         public bool _useNameToClipComparing = false;
+        [HideInInspector]
         [SerializeField]
         public bool _considerClipName = true;
+        [HideInInspector]
         [SerializeField]
         public bool _considerClipTime = false;
+        [HideInInspector]
         [SerializeField]
         public bool _considerTrackName = true;
+        [HideInInspector]
         [SerializeField]
         public bool _considerTrackGroupForClipMatching = false;
 
