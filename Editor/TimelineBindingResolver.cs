@@ -394,13 +394,21 @@ namespace trit.timelinebindingresolver
         }
 
         void SetGenericBindingFromTrack(PlayableDirector director, SceneTrackBinding sceneTrackBinding, Object value){
+            if(director == null){
+                Debug.LogWarning("[TBR]PlayableDirector is null.", gameObject);
+                return;
+            }
+            if(director.playableAsset == null){
+                Debug.LogWarning("[TBR]PlayableAsset is null.", director);
+                return;
+            }
             var targetTrackBinding = sceneTrackBinding.track as Object;
             if(_useNameToTrackComparing){
                 var matchings = new List<PlayableBinding>();
                 if(_considerTrackGroupForTrackMatching){
-                    matchings = _director.playableAsset.outputs.Where(b => GetTrackPath(b.sourceObject as TrackAsset) == sceneTrackBinding.trackName).ToList();
+                    matchings = director.playableAsset.outputs.Where(b => GetTrackPath(b.sourceObject as TrackAsset) == sceneTrackBinding.trackName).ToList();
                 }else{
-                    matchings = _director.playableAsset.outputs.Where(b => b.streamName == (sceneTrackBinding.trackName).Split("/").Last()).ToList();
+                    matchings = director.playableAsset.outputs.Where(b => b.streamName == (sceneTrackBinding.trackName).Split("/").Last()).ToList();
                 }
                 if(!matchings.Any()){
                     Debug.LogWarning("[TBR]No matching track name: " + sceneTrackBinding.trackName);
@@ -420,6 +428,14 @@ namespace trit.timelinebindingresolver
 
         void ApplyClipBindings(string crtPath) {
             _director = GetComponent<PlayableDirector>();
+            if(_director == null){
+                Debug.LogWarning("[TBR]PlayableDirector is null.", gameObject);
+                return;
+            }
+            if(_director.playableAsset == null){
+                Debug.LogWarning("[TBR]PlayableAsset is null.", _director);
+                return;
+            }
             foreach (var binding in _sceneClipBindings){
                 // bool isValid;
                 // if (_director.GetReferenceValue(binding.clip, out isValid) != null) continue;
@@ -686,14 +702,14 @@ namespace trit.timelinebindingresolver
             // [Unity \- Scripting API: SceneManagement\.EditorSceneManager\.sceneOpened](https://docs.unity3d.com/ScriptReference/SceneManagement.EditorSceneManager-sceneOpened.html)
             EditorSceneManager.sceneOpened += ApplyTBROnSceneLoadedCallback;
             // [Bug \- EditorSceneManager\.sceneOpened not called on Editor startup\. \- Unity Forum](https://forum.unity.com/threads/editorscenemanager-sceneopened-not-called-on-editor-startup.1259672/)
-            EditorApplication.delayCall += ApplyTBRDellayCall;
+            EditorApplication.delayCall += ApplyTBRDelayCall;
             Debug.Log("[TBR] Applied all bindings on scene loaded.");
         }
 
-        static void ApplyTBRDellayCall(){
+        static void ApplyTBRDelayCall(){
             ApplyTBROnSceneLoadedCallback(EditorSceneManager.GetActiveScene(),OpenSceneMode.Single);
-            EditorApplication.delayCall -= ApplyTBRDellayCall; // Call on startup scene loading only. ignore re-calling on script compiled.
-            Debug.Log("[TBR] Call Dellay");
+            EditorApplication.delayCall -= ApplyTBRDelayCall; // Call on startup scene loading only. ignore re-calling on script compiled.
+            Debug.Log("[TBR] Call Delay");
         }
 
         static void ApplyTBROnSceneLoadedCallback(Scene scene, OpenSceneMode mode){
