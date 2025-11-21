@@ -2,12 +2,57 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace trit.timelinebindingresolver
 {
     public static class SceneUtils{
         static string _siblingBracketL = "〈";
         static string _siblingBracketR = "〉";
+
+        public static IEnumerable<TimelineBindingResolver> GetTBRs(Scene scene)
+        {
+            List<TimelineBindingResolver> resolvers = new List<TimelineBindingResolver>();
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                resolvers.AddRange(root.GetComponentsInChildren<TimelineBindingResolver>(true));
+            }
+            return resolvers;
+        }
+        public static IEnumerable<UnityEngine.SceneManagement.Scene> AllScenes(){
+            var scenes = new List<UnityEngine.SceneManagement.Scene>();
+            for(int i=0; i<UnityEngine.SceneManagement.SceneManager.sceneCount; i++){
+                scenes.Add(UnityEngine.SceneManagement.SceneManager.GetSceneAt(i));
+            }
+            return scenes;
+        }
+
+        public static void CollectAll(){
+            var scenes = AllScenes();
+            foreach(var scene in scenes){
+                CollectAll(scene);
+            }
+        }
+
+        public static void CollectAll(Scene scene){
+            var resolvers = GetTBRs(scene);
+            foreach(var resolver in resolvers){
+                resolver.Collect();
+            }
+        }
+
+        public static void CollectAndApplyPrefabAll(){
+            var scenes = AllScenes();
+            foreach(var scene in scenes){
+                CollectAndApplyPrefabAll(scene);
+            }
+        }
+        public static void CollectAndApplyPrefabAll(Scene scene){
+            var resolvers = GetTBRs(scene);
+            foreach(var resolver in resolvers){
+                resolver.CollectAndApplyPrefab();
+            }
+        }
 
         static string GetHierarchyPathWithSibling(Transform current)
         {

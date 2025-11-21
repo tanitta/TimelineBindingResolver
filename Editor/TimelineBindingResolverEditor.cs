@@ -16,7 +16,7 @@ namespace trit.timelinebindingresolver{
         SerializedProperty _considerClipTime;
         SerializedProperty _considerTrackName;
         SerializedProperty _considerTrackGroupForClipMatching;
-
+        SerializedProperty _applyTargetPrefab;
         void OnEnable()
         {
             _script = serializedObject.FindProperty("m_Script");
@@ -27,15 +27,20 @@ namespace trit.timelinebindingresolver{
             _considerClipTime                   = serializedObject.FindProperty("_considerClipTime");
             _considerTrackName                  = serializedObject.FindProperty("_considerTrackName");
             _considerTrackGroupForClipMatching  = serializedObject.FindProperty("_considerTrackGroupForClipMatching");
+            _applyTargetPrefab  = serializedObject.FindProperty("_applyTargetPrefab");
         }
 
         public override void OnInspectorGUI(){
             var tbr = (TimelineBindingResolver)target;
+            if(GUILayout.Button("Collect Bindings And Apply Prefab",GUILayout.Width(240))){
+                Undo.RecordObject(tbr, "Collect And Apply Prefab Changes");
+                tbr.CollectAndApplyPrefab();
+                EditorUtility.SetDirty(tbr);
+            };
             if(GUILayout.Button("Collect Bindings",GUILayout.Width(120))){
                 Undo.RecordObject(tbr, "Collect Changes");
                 tbr.Collect();
                 EditorUtility.SetDirty(tbr);
-                // serializedObject.Update();
             };
             GUILayout.Space(10);
 
@@ -65,6 +70,7 @@ namespace trit.timelinebindingresolver{
                     EditorGUILayout.PropertyField(_considerTrackGroupForClipMatching);
                     EditorGUI.indentLevel--;
                 }
+                EditorGUILayout.PropertyField(_applyTargetPrefab);
                 EditorGUI.indentLevel--;
             }
             EditorGUILayout.EndFoldoutHeaderGroup();

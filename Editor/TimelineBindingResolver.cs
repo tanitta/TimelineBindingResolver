@@ -55,6 +55,20 @@ namespace trit.timelinebindingresolver
         [SerializeField]
         public List<SceneClipBinding> _sceneClipBindings = new List<SceneClipBinding>();
 
+        [HideInInspector]
+        [SerializeField]
+        public GameObject _applyTargetPrefab;
+        
+
+
+        private void OnValidate()
+        {
+            if(_applyTargetPrefab != null && _applyTargetPrefab.scene.IsValid())
+            {
+                _applyTargetPrefab = null;
+            }
+        }
+
         [ContextMenu("TBR/Apply")]
         public void Apply() {
             var crtPath = SceneUtils.GetHierarchyPath(this);
@@ -74,6 +88,31 @@ namespace trit.timelinebindingresolver
             CollectTrackBindings(crtPath);
             CollectClipBindings(crtPath);
             DisableTimelinePreview();
+        }
+
+        [ContextMenu("TBR/CollectAll")]
+        public void CollectAll() {
+            SceneUtils.CollectAll();
+        }
+
+        [ContextMenu("TBR/CollectAndApplyPrefab")]
+        public void CollectAndApplyPrefab(){
+            Collect();
+            PrefabUtility.RecordPrefabInstancePropertyModifications(this);
+            ApplyPrefab(_applyTargetPrefab);
+        }
+
+        [ContextMenu("TBR/CollectAndApplyPrefabAll")]
+        public void CollectAndApplyPrefabAll() {
+            SceneUtils.CollectAndApplyPrefabAll();
+        }
+
+        public void ApplyPrefab(){
+            ApplyPrefab(_applyTargetPrefab);
+        }
+        public void ApplyPrefab(GameObject applyTargetPrefab){
+            var assetPath = applyTargetPrefab==null?UnityEditor.PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(this):AssetDatabase.GetAssetPath(applyTargetPrefab);
+            UnityEditor.PrefabUtility.ApplyObjectOverride(this, assetPath, InteractionMode.UserAction);
         }
 
         void DisableTimelinePreview() {
