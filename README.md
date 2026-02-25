@@ -12,7 +12,7 @@ thereby reducing asset conflicts during team production with tools like Git and 
 
 Unity Package Manager(UPM) support path query parameter of git package.
 You can add `https://github.com/tanitta/TimelineBindingResolver.git` to Package Manager or 
-add `net.tanitta.timeline_binding_resolver": "https://github.com/tanitta/TimelineBindingResolver.git` to Packages/manifest.json.
+add `"net.tanitta.timeline_binding_resolver": "https://github.com/tanitta/TimelineBindingResolver.git"` to Packages/manifest.json.
 
 # Usage
 
