@@ -58,8 +58,6 @@ namespace trit.timelinebindingresolver
         [HideInInspector]
         [SerializeField]
         public GameObject _applyTargetPrefab;
-        
-
 
         private void OnValidate()
         {
